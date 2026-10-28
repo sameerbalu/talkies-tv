@@ -1,0 +1,44 @@
+name: Build Talkies
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write          # lets the build publish talkies.apk as a release, so the TV install script can download it
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Android SDK 35
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null 2>&1 || true
+      # The release build is signed with the debug key. Keep the same key between builds, so a new build
+      # installs over the old one on the TV and keeps its settings.
+      - name: Keep the same signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: talkies-debug-keystore-v1
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain assembleRelease
+      - name: Name the APK
+        run: cp app/build/outputs/apk/release/app-release.apk talkies.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talkies-apk
+          path: talkies.apk
+      - name: Publish talkies.apk
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Talkies (latest build)
+          prerelease: true
+          files: talkies.apk
